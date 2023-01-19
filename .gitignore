@@ -1,0 +1,8 @@
+*.log
+*.csv
+*.pyc
+*passwords.conf
+*guide.py
+*CHECKPOINT
+*response*.json
+jsonreader.py
