@@ -1,2 +1,2 @@
-# OneTrust Assessments Splunk TA
-Collects OneTrust Assessments JSON data
+# OneTrust Privacy Cloud Splunk TA
+Collects OneTrust Privacy Cloud Requests JSON data
