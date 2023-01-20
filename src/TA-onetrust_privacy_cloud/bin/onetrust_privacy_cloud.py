@@ -2,9 +2,7 @@ import json
 import os
 import sys
 import requests
-import hashlib
 import socket
-import re
 import time
 from datetime import datetime
 from splunklib.modularinput import *
@@ -156,6 +154,8 @@ class OneTrustPrivacy(Script):
         except ValueError:
             return retval
             
+    def format_mepoch(self, ew, mepoch):
+        return datetime.fromtimestamp(mepoch / 1000).strftime(f"%FT%X.%f")[:-3] + " UTC"
 
     def stream_events(self, inputs, ew):
         
@@ -167,7 +167,8 @@ class OneTrustPrivacy(Script):
         base_url = str(self.input_items["base_url"]).strip()
         api_token = str(self.input_items["api_token"]).strip()
         checkpoint = str(self.input_items["start_date"]).strip()
-        checkpoint_meta = int(datetime.strptime(f"{checkpoint}000000", f"%Y%m%d%H%M%S").strftime("%s"))
+        checkpoint_meta = int(datetime.strptime(f"{checkpoint}000000", f"%Y%m%d%H%M%S").strftime("%s")) 
+        checkpoint_meta = checkpoint_meta * 1000
         total_events = 0
         total_events_skipped = 0
         
@@ -194,17 +195,17 @@ class OneTrustPrivacy(Script):
             if checkpoint_cur < 0 :
                 self.update_checkpoint(checkpoint_meta)
                 checkpoint_cur = checkpoint_meta
-                ew.log("INFO", f"Looks like this is a start of a new collection so we're using the 'Start Date' as initial checkpoint: {str(datetime.fromtimestamp(checkpoint_cur))}.")
+                ew.log("INFO", f"Looks like this is a start of a new collection so we're using the 'Start Date' as initial checkpoint: {self.format_mepoch(ew, checkpoint_cur)}.")
             
-            ew.log("INFO", f"Streaming OneTrust Privacy Cloud Requests from base_url={base_url}. Current checkpoint: {str(datetime.fromtimestamp(checkpoint_cur))}.")
+            ew.log("INFO", f"Streaming OneTrust Privacy Cloud Requests from base_url={base_url}. Current checkpoint: {self.format_mepoch(ew, checkpoint_cur)}}.")
             
             # For API parameter, get the latest Checkpoint rather than the one saved in inputs stanza
-            checkpoint_reconverted = datetime.fromtimestamp(checkpoint_cur).strftime(f"%Y%m%d")
+            api_start_date = datetime.fromtimestamp(checkpoint_cur / 1000).strftime(f"%Y%m%d")
             max_date_updated = 0
             
             while page_flipper < req_ids_pages:
                 
-                req_ids_curpage = self.get_all_request(ew, base_url, api_token, checkpoint_reconverted, page_flipper)
+                req_ids_curpage = self.get_all_request(ew, base_url, api_token, api_start_date, page_flipper)
                 
                 # At first iteration, get the total number of pages
                 if page_flipper == 0:
@@ -219,6 +220,9 @@ class OneTrustPrivacy(Script):
                     
                     # Checkpoint
                     date_updated = int(datetime.strptime(reqItem["dateUpdated"], f"%Y-%m-%dT%H:%M:%S.%fZ").strftime(f"%s"))
+                    # Convert to mepoch
+                    date_updated = date_updated * 1000 
+                    
                     if date_updated > max_date_updated:
                         max_date_updated = date_updated
                     
