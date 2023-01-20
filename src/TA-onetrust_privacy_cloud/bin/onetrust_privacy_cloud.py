@@ -6,6 +6,7 @@ import hashlib
 import socket
 import re
 import time
+from datetime import datetime
 from splunklib.modularinput import *
 import splunklib.client as client
 
@@ -13,6 +14,7 @@ class OneTrustPrivacy(Script):
     
     MASK = "***ENCRYPTED***"
     NO_JSON_DATA = "n/a"
+    CHECKPOINT_FILE_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'tmp', 'CHECKPOINT'))
     
     def get_scheme(self):
         scheme = Scheme("OneTrust Privacy Cloud")
@@ -97,7 +99,7 @@ class OneTrustPrivacy(Script):
     
     def get_all_request(self, ew, _base_url, _api_token, _checkpoint, _page):
         
-        url = f"{_base_url}/api/datasubject/v2/requestqueues/en-us?&modifieddate={_checkpoint}&page={_page}&size=500&sort=desc"
+        url = f"{_base_url}/api/datasubject/v2/requestqueues/en-us?&modifieddate={_checkpoint}&page={_page}&size=500&sort=asc"
 
         ew.log("INFO", f"OneTrust API Call: GET {url}")
 
@@ -118,6 +120,43 @@ class OneTrustPrivacy(Script):
             ew.log("ERROR", f"Error retrieving Privacy Cloud Requests from page={str(_page)}. err_msg=\"{str(e)}\"")
             sys.exit(1)
 
+    def update_checkpoint(self, _chkpt):
+        
+        with open(self.CHECKPOINT_FILE_PATH, 'w+') as f:
+            f.write(f'{_chkpt}\n')
+            f.close()
+    
+    def read_checkpoint(self, ew):
+        
+        if not os.path.exists(self.CHECKPOINT_FILE_PATH):
+            
+            ew.log("INFO", f'Expected checkpoint file is not found. Creating new a one: {self.CHECKPOINT_FILE_PATH}')
+            
+            with open(self.CHECKPOINT_FILE_PATH, "w+") as f:
+                f.write("")
+                f.close()
+            
+            ew.log("INFO", f'New checkpoint file has been successfully created.')
+        
+        with open(self.CHECKPOINT_FILE_PATH, 'r') as f:
+            fcontents = f.readlines()
+            f.close()
+        
+        retval = -1
+        
+        if fcontents is None:
+            return retval
+        
+        if len(fcontents) < 1:
+            return retval
+        
+        try:
+            retval = int(fcontents[-1])
+            return retval
+        except ValueError:
+            return retval
+            
+
     def stream_events(self, inputs, ew):
         
         start = time.time()
@@ -128,12 +167,13 @@ class OneTrustPrivacy(Script):
         base_url = str(self.input_items["base_url"]).strip()
         api_token = str(self.input_items["api_token"]).strip()
         checkpoint = str(self.input_items["start_date"]).strip()
+        checkpoint_meta = int(datetime.strptime(f"{checkpoint}000000", f"%Y%m%d%H%M%S").strftime("%s"))
+        total_events = 0
+        total_events_skipped = 0
         
         if base_url[-1] == '/':
             base_url = base_url.rstrip(base_url[-1])
         
-        ew.log("INFO", f"Streaming OneTrust Privacy Cloud Requests from base_url={base_url}. Starting on {checkpoint}")
-
         try:
             if api_token != self.MASK:
                 self.encrypt_keys(base_url, api_token, session_key)
@@ -142,18 +182,30 @@ class OneTrustPrivacy(Script):
             decrypted = self.decrypt_keys(base_url, session_key)
             self.CREDENTIALS = json.loads(decrypted)
             api_token = str(self.CREDENTIALS["apiToken"]).strip()
+            
+            ew.log("INFO", f"API credentials and other parameters retrieved.")
 
             # Assumes there at least 1 page
             req_ids_pages = 1
             page_flipper = 0
             apiScriptHost = socket.gethostname()
-
-            ew.log("INFO", f"API credentials and other parameters retrieved.")
-                        
+            checkpoint_cur = self.read_checkpoint(ew)
+            
+            if checkpoint_cur < 0 :
+                self.update_checkpoint(checkpoint_meta)
+                checkpoint_cur = checkpoint_meta
+                ew.log("INFO", f"Looks like this is a start of a new collection so we're using the 'Start Date' as initial checkpoint: {str(datetime.fromtimestamp(checkpoint_cur))}.")
+            
+            ew.log("INFO", f"Streaming OneTrust Privacy Cloud Requests from base_url={base_url}. Current checkpoint: {str(datetime.fromtimestamp(checkpoint_cur))}.")
+            
+            # For API parameter, get the latest Checkpoint rather than the one saved in inputs stanza
+            checkpoint_reconverted = datetime.fromtimestamp(checkpoint_cur).strftime(f"%Y%m%d")
+            max_date_updated = 0
+            
             while page_flipper < req_ids_pages:
                 
-                req_ids_curpage = self.get_all_request(ew, base_url, api_token, checkpoint, page_flipper)
-
+                req_ids_curpage = self.get_all_request(ew, base_url, api_token, checkpoint_reconverted, page_flipper)
+                
                 # At first iteration, get the total number of pages
                 if page_flipper == 0:
                     if "totalPages" in req_ids_curpage:
@@ -164,6 +216,16 @@ class OneTrustPrivacy(Script):
                 
                 # Streaming all Assessment Summaries first
                 for reqItem in req_ids_curpage["content"]:
+                    
+                    # Checkpoint
+                    date_updated = int(datetime.strptime(reqItem["dateUpdated"], f"%Y-%m-%dT%H:%M:%S.%fZ").strftime(f"%s"))
+                    if date_updated > max_date_updated:
+                        max_date_updated = date_updated
+                    
+                    if checkpoint_cur > date_updated :
+                        total_events_skipped = total_events_skipped + 1
+                        continue
+                    
                     reqItem["tenantHostname"] = base_url
                     reqItem["apiPage"] = page_flipper
                     reqItem["apiScriptHost"] = apiScriptHost
@@ -172,15 +234,19 @@ class OneTrustPrivacy(Script):
                     reqItemEvent.sourceType  = "onetrust:privacy:requests"
                     reqItemEvent.data = json.dumps(reqItem)
                     ew.write_event(reqItemEvent)
+                    total_events = total_events + 1
                 
                 page_flipper += 1
-
+            
+            ew.log("INFO", f"Updating checkpoint date to: {str(datetime.fromtimestamp(max_date_updated))} (epoch={str(max_date_updated)})")
+            self.update_checkpoint(max_date_updated)
+            
         except Exception as e:
             ew.log("ERROR", f"Error streaming events: err_msg=\"{str(e)}\"")
             
         end = time.time()
         elapsed = round((end - start) * 1000, 2)
-        ew.log("INFO", f"Streaming OneTrust Privacy Cloud has been successful / completed in {str(elapsed)} ms.")
+        ew.log("INFO", f"Streaming OneTrust Privacy Cloud has been successful / completed in {str(elapsed)} ms. Total events ingested: {str(total_events)}. Total events skipped due to checkpoint: {str(total_events_skipped)}.")
 
 if __name__ == "__main__":
     sys.exit(OneTrustPrivacy().run(sys.argv))

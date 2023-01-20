@@ -1,10 +1,10 @@
 {
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "2.0.0",
   "info": {
-    "title": "OneTrust Assessments",
+    "title": "OneTrust Privacy Cloud",
     "id": {
       "group": null,
-      "name": "TA-onetrust_assessments",
+      "name": "TA-onetrust_privacy_cloud",
       "version": "1.0.0"
     },
     "author": [
@@ -15,7 +15,7 @@
       }
     ],
     "releaseDate": null,
-    "description": "Utilizes OneTrust API to collect OneTrust Assessments JSON Logs",
+    "description": "Utilizes OneTrust API to collect OneTrust Privacy Cloud Requests JSON Logs",
     "classification": {
       "intendedAudience": null,
       "categories": [],
