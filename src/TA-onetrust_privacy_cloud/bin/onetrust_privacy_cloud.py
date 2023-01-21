@@ -174,7 +174,7 @@ class OneTrustPrivacy(Script):
         checkpoint = str(self.input_items["start_date"]).strip()
         checkpoint_meta = int(datetime.strptime(f"{checkpoint}000000", f"%Y%m%d%H%M%S").strftime("%s")) 
         checkpoint_meta = checkpoint_meta * 1000
-        total_events = 0
+        total_events_written = 0
         total_events_skipped = 0
         
         if base_url[-1] == '/':
@@ -229,7 +229,7 @@ class OneTrustPrivacy(Script):
                     if date_updated > max_date_updated:
                         max_date_updated = date_updated
                     
-                    # Check if current checkpoint is larger than the dateUpdated from the retrieved JSON resp
+                    # Ignore this iteration and EventWriting if checkpoint is larger than the dateUpdated 
                     if checkpoint_cur > date_updated :
                         total_events_skipped = total_events_skipped + 1
                         continue
@@ -242,7 +242,7 @@ class OneTrustPrivacy(Script):
                     reqItemEvent.sourceType  = "onetrust:privacy:requests"
                     reqItemEvent.data = json.dumps(reqItem)
                     ew.write_event(reqItemEvent)
-                    total_events = total_events + 1
+                    total_events_written = total_events_written + 1
                 
                 page_flipper += 1
             
@@ -254,7 +254,7 @@ class OneTrustPrivacy(Script):
             
         end = time.time()
         elapsed = round((end - start) * 1000, 2)
-        ew.log("INFO", f"Streaming OneTrust Privacy Cloud has been successful / completed in {str(elapsed)} ms. Total events ingested: {str(total_events)}. Total events skipped due to checkpoint: {str(total_events_skipped)}.")
+        ew.log("INFO", f"Streaming OneTrust Privacy Cloud has been successful / completed in {str(elapsed)} ms. Total events ingested: {str(total_events_written)}. Total events skipped due to checkpoint: {str(total_events_skipped)}.")
 
 if __name__ == "__main__":
     sys.exit(OneTrustPrivacy().run(sys.argv))
