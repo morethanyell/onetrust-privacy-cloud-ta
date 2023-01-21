@@ -154,8 +154,13 @@ class OneTrustPrivacy(Script):
         except ValueError:
             return retval
             
-    def format_mepoch(self, ew, mepoch):
-        return datetime.fromtimestamp(mepoch / 1000).strftime(f"%FT%X.%f")[:-3] + " UTC"
+    def format_mepoch(self, checkpoint_cur):
+        return datetime.fromtimestamp(checkpoint_cur / 1000).strftime(f"%FT%X.%f")[:-3] + " UTC"
+
+    def parse_datestr(self, ew, datestr):
+        date_obj = datetime.strptime(datestr, f"%Y-%m-%dT%H:%M:%S.%fZ")
+        millis = str(date_obj)[20:23]
+        return int(date_obj.strftime("%s") + millis)
 
     def stream_events(self, inputs, ew):
         
@@ -195,9 +200,9 @@ class OneTrustPrivacy(Script):
             if checkpoint_cur < 0 :
                 self.update_checkpoint(checkpoint_meta)
                 checkpoint_cur = checkpoint_meta
-                ew.log("INFO", f"Looks like this is a start of a new collection so we're using the 'Start Date' as initial checkpoint: {self.format_mepoch(ew, checkpoint_cur)}.")
+                ew.log("INFO", f"Looks like this is a start of a new collection so we're using the 'Start Date' as initial checkpoint: {self.format_mepoch(checkpoint_cur)}.")
             
-            ew.log("INFO", f"Streaming OneTrust Privacy Cloud Requests from base_url={base_url}. Current checkpoint: {self.format_mepoch(ew, checkpoint_cur)}}.")
+            ew.log("INFO", f"Streaming OneTrust Privacy Cloud Requests from base_url={base_url}. Current checkpoint: {self.format_mepoch(checkpoint_cur)}.")
             
             # For API parameter, get the latest Checkpoint rather than the one saved in inputs stanza
             api_start_date = datetime.fromtimestamp(checkpoint_cur / 1000).strftime(f"%Y%m%d")
@@ -218,14 +223,13 @@ class OneTrustPrivacy(Script):
                 # Streaming all Assessment Summaries first
                 for reqItem in req_ids_curpage["content"]:
                     
-                    # Checkpoint
-                    date_updated = int(datetime.strptime(reqItem["dateUpdated"], f"%Y-%m-%dT%H:%M:%S.%fZ").strftime(f"%s"))
-                    # Convert to mepoch
-                    date_updated = date_updated * 1000 
+                    # Retrieve Mepoch from the JSON resp and convert to millis
+                    date_updated = self.parse_datestr(ew, reqItem["dateUpdated"])
                     
                     if date_updated > max_date_updated:
                         max_date_updated = date_updated
                     
+                    # Check if current checkpoint is larger than the dateUpdated from the retrieved JSON resp
                     if checkpoint_cur > date_updated :
                         total_events_skipped = total_events_skipped + 1
                         continue
@@ -242,7 +246,7 @@ class OneTrustPrivacy(Script):
                 
                 page_flipper += 1
             
-            ew.log("INFO", f"Updating checkpoint date to: {str(datetime.fromtimestamp(max_date_updated))} (epoch={str(max_date_updated)})")
+            ew.log("INFO", f"Updating checkpoint date to: {self.format_mepoch(max_date_updated)} (epoch_millis={str(max_date_updated)})")
             self.update_checkpoint(max_date_updated)
             
         except Exception as e:
