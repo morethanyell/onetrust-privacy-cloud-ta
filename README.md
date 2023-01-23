@@ -28,6 +28,7 @@ To configure a collection, you will need two things:
 8. Enter your preferred host under the `Host` textbox
     - We recommend that you enter here the same value as the one you use `hostname`
 9. Set your index under the `index` dropdown* menu
+10. Finally, enable your input as it is disabled by default
 
 *If you're configuring this on a Splunk Heavy Forwarder that is not aware of the list of indexes available in your Indexer Cluster (e.g.: SplunkCloud), just select `default` for Step 9. Once done, directly modify the `inputs.conf` using your favorite text editor. Under the stanza `[onetrust_privacy_cloud://<name you gave>]`, look for `index = default` and then replace the value to your chosen index.
 
