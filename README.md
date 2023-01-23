@@ -39,4 +39,4 @@ Check for internal logs by running the SPL below:
 index=_internal source=*splunkd.log "onetrust_privacy_cloud.py" 
 | transaction thread_id source maxspan=<the value you enter for Step 6> startswith="New scheduled exec process" endswith="Streaming OneTrust Privacy Cloud has been successful"
 ```
-##### Buy me a bear: paypal.me/morethanyell
+##### Buy me a beer: paypal.me/morethanyell
