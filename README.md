@@ -23,7 +23,7 @@ To configure a collection, you will need two things:
     - Enter the date from when you wanted to start collecting. It is important to follow the format `yyyymmdd`
 5. Click `More settings`
 6. Under `Interval` enter a valid Cron schedule or interval in seconds
-    - It is suggested to use interval in seconds and the value of a minimum of 3600 (collect every 30 minutes)
+    - It is suggested to use interval in seconds and the value of a minimum of 3600 (collect every 60 minutes)
 7. Leave `Set sourcetype` as `Automatic`
 8. Enter your preferred host under the `Host` textbox
     - We recommend that you enter here the same value as the one you use `hostname`
